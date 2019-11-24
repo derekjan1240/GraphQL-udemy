@@ -19,7 +19,7 @@ const Mutation = {
 
         return user
     },
-    deleteUser(parent, args, { db }, info){
+    deleteUser(parent, args, { db, pubsub }, info){
         const userIndex = db.users.findIndex((user)=>{
             return user.id === args.id
         })
@@ -82,7 +82,7 @@ const Mutation = {
 
         return user         
     },
-    createPost(parent, args, { db }, info){
+    createPost(parent, args, { db, pubsub }, info){
         const userExists = db.users.some((user)=>{
             return user.id === args.data.author
         })
@@ -98,13 +98,23 @@ const Mutation = {
 
         db.posts.push(post);
 
+        if(args.data.published === true){
+            pubsub.publish('post', {
+                post:{
+                    mulation: 'CREATE',
+                    data: post
+                } 
+            })
+        }
+
         return post
     },
-    updatePost(parent, args, { db }, info){
+    updatePost(parent, args, { db, pubsub }, info){
         const { id, data } = args
         const post = db.posts.find((post)=>{
             return post.id === id
         })
+        const originalPost = { ...post }
 
         if(!post){
             throw new Error('Post not found')
@@ -120,11 +130,37 @@ const Mutation = {
 
         if ( typeof data.published === 'boolean'){
             post.published = data.published
+            
+            if(originalPost.published && !post.published){
+                // delete (發佈 > 不發佈)
+                pubsub.publish('post', {
+                    post:{
+                        mulation: "DELETED",
+                        data: originalPost
+                    }
+                })
+            }else if(!originalPost.published && post.published){
+                // create ( 發佈 > 不發佈)
+                pubsub.publish('post', {
+                    post:{
+                        mulation: "CREATE",
+                        data: post
+                    }
+                })
+            }
+        }else if(post.published){
+            // updated (單純更新內容)
+            pubsub.publish('post', {
+                post:{
+                    mulation: "UPDATED",
+                    data: post
+                }
+            })
         }
 
         return post         
     },
-    deletePost(parent, args, { db }, info){
+    deletePost(parent, args, { db, pubsub }, info){
         const postIndex = db.posts.findIndex((post)=>{
             return post.id === args.id
         })
@@ -133,16 +169,25 @@ const Mutation = {
             throw new Error('Post not found')
         }
 
-        const deletePosts = db.posts.splice(postIndex, 1)
+        const [post] = db.posts.splice(postIndex, 1)
 
         db.comments = db.comments.filter((comment)=>{
             return comment.post !== args.id
         })
 
-        return deletePosts[0]
+        if(post.published){
+            pubsub.publish('post', {
+                post:{
+                    mulation: "DELETED",
+                    data: post
+                }
+            })
+        }
+
+        return post
 
     }, 
-    createComment(parent, args, { db }, info){
+    createComment(parent, args, { db, pubsub }, info){
         const userExists = db.users.some((user)=>{
             return user.id === args.data.author
         })
@@ -165,6 +210,7 @@ const Mutation = {
         }
 
         db.comments.push(comment);
+        pubsub.publish(`comment ${args.data.post}`, { comment})
 
         return comment
     },
