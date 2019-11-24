@@ -28,7 +28,7 @@ const Mutation = {
            throw new Error('User not found.') 
         }
 
-        const deleteUsers = db.users.splice(userIndex, 1)
+        const [deleteUser] = db.users.splice(userIndex, 1)
 
         // delete post and post comment
         db.posts = db.posts.filter((post)=>{
@@ -45,10 +45,10 @@ const Mutation = {
 
         // delete comments by user
         db.comments = db.comments.filter((comment)=>{
-            return comment.author !== args.id
+            return comment.author !== args.id 
         })
 
-        return deleteUsers[0]
+        return deleteUser
     },
     updateUser(parent, args, { db }, info){
         const { id, data } = args
@@ -101,7 +101,7 @@ const Mutation = {
         if(args.data.published === true){
             pubsub.publish('post', {
                 post:{
-                    mulation: 'CREATE',
+                    mutation: 'CREATED',
                     data: post
                 } 
             })
@@ -135,7 +135,7 @@ const Mutation = {
                 // delete (發佈 > 不發佈)
                 pubsub.publish('post', {
                     post:{
-                        mulation: "DELETED",
+                        mutation: "DELETED",
                         data: originalPost
                     }
                 })
@@ -143,7 +143,7 @@ const Mutation = {
                 // create ( 發佈 > 不發佈)
                 pubsub.publish('post', {
                     post:{
-                        mulation: "CREATE",
+                        mutation: "CREATED",
                         data: post
                     }
                 })
@@ -152,7 +152,7 @@ const Mutation = {
             // updated (單純更新內容)
             pubsub.publish('post', {
                 post:{
-                    mulation: "UPDATED",
+                    mutation: "UPDATED",
                     data: post
                 }
             })
@@ -178,7 +178,7 @@ const Mutation = {
         if(post.published){
             pubsub.publish('post', {
                 post:{
-                    mulation: "DELETED",
+                    mutation: "DELETED",
                     data: post
                 }
             })
@@ -210,11 +210,16 @@ const Mutation = {
         }
 
         db.comments.push(comment);
-        pubsub.publish(`comment ${args.data.post}`, { comment})
+        pubsub.publish(`comment ${args.data.post}`, { 
+            comment: {
+                mutation: "CREATED",
+                data: comment
+            }
+        })
 
         return comment
     },
-    deleteComment(parent, args, { db }, info){
+    deleteComment(parent, args, { db, pubsub }, info){
         const commentIndex = db.comments.findIndex((comment)=>{
             return comment.id === args.id
         })
@@ -223,11 +228,17 @@ const Mutation = {
             throw new Error('Comment not found')
         }
 
-        const deleteComments = db.comments.splice(commentIndex, 1)
+        const [deleteComment] = db.comments.splice(commentIndex, 1)
+        pubsub.publish(`comment ${deleteComment.post}`, { 
+            comment: {
+                mutation: "DELETED",
+                data: deleteComment
+            }
+        })
 
-        return deleteComments[0]
+        return deleteComment
     },
-    updateComment(parent, args, { db }, info){
+    updateComment(parent, args, { db, pubsub }, info){
         const { id, data } = args
         const comment = db.comments.find((comment)=>{
             return comment.id === id
@@ -240,6 +251,13 @@ const Mutation = {
         if ( typeof data.text === 'string'){
             comment.text = data.text
         }
+
+        pubsub.publish(`comment ${comment.post}`,{
+            comment:{
+                mutation:"UPDATED",
+                data: comment
+            }
+        })
 
         return comment      
     }
