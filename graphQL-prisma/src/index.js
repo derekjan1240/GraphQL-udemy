@@ -6,6 +6,7 @@ import Subscription from './resolvees/Subscription'
 import Comment from './resolvees/Comment'
 import User from './resolvees/User'
 import Post from './resolvees/Post'
+import './prisma'
 
 const pubsub = new PubSub();
 
